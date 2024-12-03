@@ -5,114 +5,127 @@
  * @format
  */
 
-import React from 'react';
-import type {PropsWithChildren} from 'react';
-import {
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  useColorScheme,
-  View,
-} from 'react-native';
+import React, { useEffect } from 'react';
+import { NavigationContainer, DefaultTheme, DarkTheme as NavigationDarkTheme } from '@react-navigation/native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { PaperProvider, MD3DarkTheme, MD3LightTheme, adaptNavigationTheme } from 'react-native-paper';
+import { useColorScheme, StatusBar, Platform } from 'react-native';
+import MobileBottomTabs from './components/MobileBottomTabs';
+import { MusicPlayerProvider } from './contexts/MusicPlayerContext';
+import { MusicUserProvider } from './contexts/MusicUserContext';
+import { ThemeProvider, useThemeMode } from './contexts/ThemeContext';
 
-import {
-  Colors,
-  DebugInstructions,
-  Header,
-  LearnMoreLinks,
-  ReloadInstructions,
-} from 'react-native/Libraries/NewAppScreen';
-
-type SectionProps = PropsWithChildren<{
-  title: string;
-}>;
-
-function Section({children, title}: SectionProps): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
+const App = () => {
   return (
-    <View style={styles.sectionContainer}>
-      <Text
-        style={[
-          styles.sectionTitle,
-          {
-            color: isDarkMode ? Colors.white : Colors.black,
-          },
-        ]}>
-        {title}
-      </Text>
-      <Text
-        style={[
-          styles.sectionDescription,
-          {
-            color: isDarkMode ? Colors.light : Colors.dark,
-          },
-        ]}>
-        {children}
-      </Text>
-    </View>
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <MusicUserProvider>
+          <MusicPlayerProvider>
+            <AppContent />
+          </MusicPlayerProvider>
+        </MusicUserProvider>
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
-}
+};
 
-function App(): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
+const AppContent = () => {
+  const { isDarkMode, primaryColor } = useThemeMode();
 
-  const backgroundStyle = {
-    backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
+  // 修改状态栏处理
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      StatusBar.setBackgroundColor('transparent');
+      StatusBar.setTranslucent(true);
+    }
+    StatusBar.setBarStyle(isDarkMode ? 'light-content' : 'dark-content');
+  }, [isDarkMode]);
+
+  // 自定义浅色主题
+  const lightTheme = {
+    ...MD3LightTheme,
+    dark: false,
+    mode: 'adaptive',
+    roundness: 2,
+    colors: {
+      ...MD3LightTheme.colors,
+      primary: primaryColor,
+      primaryContainer: isDarkMode ? '#1A472E' : '#E3F2E6',
+      secondary: '#1ED760',
+      background: '#FFFFFF',
+      surface: '#FFFFFF',
+      surfaceVariant: '#F5F5F5',
+      elevation: {
+        level0: 'transparent',
+        level1: '#F5F5F5',
+        level2: '#EEEEEE',
+        level3: '#E0E0E0',
+        level4: '#BDBDBD',
+        level5: '#9E9E9E',
+      },
+    },
+  };
+
+  // 自定义深色主题
+  const darkTheme = {
+    ...MD3DarkTheme,
+    dark: true,
+    mode: 'adaptive',
+    roundness: 2,
+    colors: {
+      ...MD3DarkTheme.colors,
+      primary: primaryColor,
+      primaryContainer: isDarkMode ? '#1A472E' : '#E3F2E6',
+      secondary: '#1ED760',
+      background: '#121212',
+      surface: '#121212',
+      surfaceVariant: '#282828',
+      elevation: {
+        level0: 'transparent',
+        level1: '#282828',
+        level2: '#181818',
+        level3: '#404040',
+        level4: '#282828',
+        level5: '#181818',
+      },
+      onSurface: '#FFFFFF',
+      onSurfaceVariant: 'rgba(255, 255, 255, 0.7)',
+      onSurfaceDisabled: 'rgba(255, 255, 255, 0.5)',
+    },
+  };
+
+  // 适配导航主题
+  const { LightTheme: NavLight, DarkTheme: NavDark } = adaptNavigationTheme({
+    reactNavigationLight: DefaultTheme,
+    reactNavigationDark: NavigationDarkTheme,
+  });
+
+  const theme = isDarkMode ? darkTheme : lightTheme;
+  const navTheme = {
+    ...(isDarkMode ? NavDark : NavLight),
+    colors: {
+      ...(isDarkMode ? NavDark.colors : NavLight.colors),
+      background: theme.colors.background,
+      card: theme.colors.surface,
+      text: theme.colors.onSurface,
+      border: theme.colors.surfaceVariant,
+    },
   };
 
   return (
-    <SafeAreaView style={backgroundStyle}>
+    <>
       <StatusBar
         barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-        backgroundColor={backgroundStyle.backgroundColor}
+        backgroundColor="transparent"
+        translucent
       />
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        style={backgroundStyle}>
-        <Header />
-        <View
-          style={{
-            backgroundColor: isDarkMode ? Colors.black : Colors.white,
-          }}>
-          <Section title="Step One">
-            Edit <Text style={styles.highlight}>App.tsx</Text> to change this
-            screen and then come back to see your edits.
-          </Section>
-          <Section title="See Your Changes">
-            <ReloadInstructions />
-          </Section>
-          <Section title="Debug">
-            <DebugInstructions />
-          </Section>
-          <Section title="Learn More">
-            Read the docs to discover what to do next:
-          </Section>
-          <LearnMoreLinks />
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+      <PaperProvider theme={theme}>
+        <NavigationContainer theme={navTheme}>
+          <MobileBottomTabs />
+        </NavigationContainer>
+      </PaperProvider>
+    </>
   );
-}
-
-const styles = StyleSheet.create({
-  sectionContainer: {
-    marginTop: 32,
-    paddingHorizontal: 24,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-  },
-  sectionDescription: {
-    marginTop: 8,
-    fontSize: 18,
-    fontWeight: '400',
-  },
-  highlight: {
-    fontWeight: '700',
-  },
-});
+};
 
 export default App;

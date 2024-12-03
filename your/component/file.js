@@ -1,0 +1,3 @@
+import { Animated } from 'react-native';
+
+// 其余代码... 
