@@ -1,136 +1,198 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import SQLite from 'react-native-sqlite-storage';
 
-class DatabaseService {
-  // 保存播放列表
-  async savePlaylist(tracks) {
+SQLite.enablePromise(true);
+
+class Database {
+  constructor() {
+    this.db = null;
+  }
+
+  async init() {
     try {
-      const now = Date.now();
-      const playlistData = tracks.map((track, index) => ({
-        id: track.id,
-        data: track,
-        addedAt: now + index
-      }));
-      await AsyncStorage.setItem('playlist', JSON.stringify(playlistData));
+      this.db = await SQLite.openDatabase({
+        name: 'bookapp.db',
+        location: 'default'
+      });
+
+      // 修改表结构以匹配书源格式
+      await this.db.executeSql(`
+        CREATE TABLE IF NOT EXISTS book_sources (
+          id TEXT PRIMARY KEY,
+          bookSourceUrl TEXT NOT NULL,
+          bookSourceName TEXT NOT NULL,
+          bookSourceGroup TEXT,
+          bookSourceType INTEGER DEFAULT 0,
+          loginUrl TEXT,
+          header TEXT,
+          enabled INTEGER DEFAULT 1,
+          enabledExplore INTEGER DEFAULT 1,
+          customOrder INTEGER DEFAULT 0,
+          weight INTEGER DEFAULT 0,
+          lastUpdateTime INTEGER,
+          searchUrl TEXT NOT NULL,
+          exploreUrl TEXT,
+          ruleSearch TEXT NOT NULL,
+          ruleExplore TEXT,
+          ruleBookInfo TEXT NOT NULL,
+          ruleToc TEXT NOT NULL,
+          ruleContent TEXT NOT NULL
+        );
+      `);
     } catch (error) {
-      console.error('保存播放列表失败:', error);
+      console.error('初始化数据库失败:', error);
+      throw error;
     }
   }
 
-  // 获取播放列表
-  async getPlaylist() {
+  async getAllSources() {
     try {
-      const data = await AsyncStorage.getItem('playlist');
-      if (data) {
-        const playlistData = JSON.parse(data);
-        return playlistData
-          .sort((a, b) => a.addedAt - b.addedAt)
-          .map(item => item.data);
-      }
+      const [results] = await this.db.executeSql(
+        'SELECT * FROM book_sources ORDER BY weight DESC, lastUpdateTime DESC'
+      );
+      return Array.from({ length: results.rows.length }, (_, i) => {
+        const item = results.rows.item(i);
+        return {
+          id: item.id,
+          bookSourceUrl: item.bookSourceUrl,
+          bookSourceName: item.bookSourceName,
+          bookSourceGroup: item.bookSourceGroup,
+          bookSourceType: item.bookSourceType,
+          loginUrl: item.loginUrl,
+          header: item.header ? JSON.parse(item.header) : null,
+          enabled: Boolean(item.enabled),
+          enabledExplore: Boolean(item.enabledExplore),
+          customOrder: item.customOrder,
+          weight: item.weight,
+          lastUpdateTime: item.lastUpdateTime,
+          searchUrl: item.searchUrl,
+          exploreUrl: item.exploreUrl,
+          ruleSearch: JSON.parse(item.ruleSearch),
+          ruleExplore: item.ruleExplore ? JSON.parse(item.ruleExplore) : null,
+          ruleBookInfo: JSON.parse(item.ruleBookInfo),
+          ruleToc: JSON.parse(item.ruleToc),
+          ruleContent: JSON.parse(item.ruleContent)
+        };
+      });
+    } catch (error) {
+      console.error('获取书源失败:', error);
       return [];
-    } catch (error) {
-      console.error('获取播放列表失败:', error);
-      return [];
     }
   }
 
-  // 保存播放进度
-  async saveProgress(trackId, position) {
+  async addSource(source) {
     try {
-      const key = `progress_${trackId}`;
-      await AsyncStorage.setItem(key, JSON.stringify({
-        position,
-        updatedAt: Date.now()
-      }));
+      const id = source.id || Math.random().toString(36).slice(2);
+      await this.db.executeSql(`
+        INSERT OR REPLACE INTO book_sources (
+          id, bookSourceUrl, bookSourceName, bookSourceGroup, bookSourceType,
+          loginUrl, header, enabled, enabledExplore, customOrder, weight,
+          lastUpdateTime, searchUrl, exploreUrl, ruleSearch, ruleExplore,
+          ruleBookInfo, ruleToc, ruleContent
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        id,
+        source.bookSourceUrl,
+        source.bookSourceName,
+        source.bookSourceGroup || '',
+        source.bookSourceType || 0,
+        source.loginUrl || null,
+        source.header ? JSON.stringify(source.header) : null,
+        source.enabled ? 1 : 0,
+        source.enabledExplore ? 1 : 0,
+        source.customOrder || 0,
+        source.weight || 0,
+        Date.now(),
+        source.searchUrl,
+        source.exploreUrl || null,
+        JSON.stringify(source.ruleSearch),
+        source.ruleExplore ? JSON.stringify(source.ruleExplore) : null,
+        JSON.stringify(source.ruleBookInfo),
+        JSON.stringify(source.ruleToc),
+        JSON.stringify(source.ruleContent)
+      ]);
+      return id;
     } catch (error) {
-      console.error('保存播放进度失败:', error);
+      console.error('添加书源失败:', error);
+      throw error;
     }
   }
 
-  // 获取播放进度
-  async getProgress(trackId) {
+  async removeSource(sourceId) {
     try {
-      const key = `progress_${trackId}`;
-      const data = await AsyncStorage.getItem(key);
-      if (data) {
-        const { position } = JSON.parse(data);
-        return position;
-      }
-      return 0;
+      await this.db.executeSql(
+        'DELETE FROM book_sources WHERE id = ?',
+        [sourceId]
+      );
     } catch (error) {
-      console.error('获取播放进度失败:', error);
-      return 0;
+      console.error('删除书源失败:', error);
+      throw error;
     }
   }
 
-  // 清理过期的播放进度
-  async cleanupOldProgress(days = 7) {
+  async updateSource(sourceId, updates) {
     try {
-      const keys = await AsyncStorage.getAllKeys();
-      const progressKeys = keys.filter(key => key.startsWith('progress_'));
-      const cutoff = Date.now() - (days * 24 * 60 * 60 * 1000);
-
-      for (const key of progressKeys) {
-        const data = await AsyncStorage.getItem(key);
-        if (data) {
-          const { updatedAt } = JSON.parse(data);
-          if (updatedAt < cutoff) {
-            await AsyncStorage.removeItem(key);
-          }
+      const sets = [];
+      const values = [];
+      
+      Object.entries(updates).forEach(([key, value]) => {
+        if (key === 'header' || key.startsWith('rule')) {
+          sets.push(`${key} = ?`);
+          values.push(JSON.stringify(value));
+        } else {
+          sets.push(`${key} = ?`);
+          values.push(value);
         }
+      });
+
+      sets.push('lastUpdateTime = ?');
+      values.push(Date.now());
+      values.push(sourceId);
+
+      await this.db.executeSql(`
+        UPDATE book_sources 
+        SET ${sets.join(', ')}
+        WHERE id = ?
+      `, values);
+    } catch (error) {
+      console.error('更新书源失败:', error);
+      throw error;
+    }
+  }
+
+  async getSource(sourceId) {
+    try {
+      const [results] = await this.db.executeSql(
+        'SELECT * FROM book_sources WHERE id = ?',
+        [sourceId]
+      );
+      
+      if (results.rows.length === 0) {
+        return null;
       }
-    } catch (error) {
-      console.error('清理播放进度失败:', error);
-    }
-  }
 
-  // 保存收藏列表
-  async saveLikedSongs(songs) {
-    try {
-      await AsyncStorage.setItem('liked_songs', JSON.stringify(songs));
+      const item = results.rows.item(0);
+      return {
+        ...item,
+        enabled: Boolean(item.enabled),
+        header: item.header ? JSON.parse(item.header) : null,
+        ruleCategories: item.ruleCategories ? JSON.parse(item.ruleCategories) : null,
+        ruleSearch: JSON.parse(item.ruleSearch),
+        ruleBookInfo: JSON.parse(item.ruleBookInfo),
+        ruleToc: JSON.parse(item.ruleToc),
+        ruleContent: JSON.parse(item.ruleContent)
+      };
     } catch (error) {
-      console.error('保存收藏列表失败:', error);
-      throw error;
-    }
-  }
-
-  // 获取收藏列表
-  async getLikedSongs() {
-    try {
-      const saved = await AsyncStorage.getItem('liked_songs');
-      return saved ? JSON.parse(saved) : [];
-    } catch (error) {
-      console.error('获取收藏列表失败:', error);
-      throw error;
-    }
-  }
-
-  // 保存最后播放的歌曲
-  async saveLastPlayedTrack(track) {
-    try {
-      await AsyncStorage.setItem('last_played_track', JSON.stringify({
-        track,
-        timestamp: Date.now()
-      }));
-    } catch (error) {
-      console.error('保存最后播放歌曲失败:', error);
-      throw error;
-    }
-  }
-
-  // 获取最后播放的歌曲
-  async getLastPlayedTrack() {
-    try {
-      const data = await AsyncStorage.getItem('last_played_track');
-      if (data) {
-        const { track } = JSON.parse(data);
-        return track;
-      }
+      console.error('获取书源失败:', error);
       return null;
-    } catch (error) {
-      console.error('获取最后播放歌曲失败:', error);
-      return null;
+    }
+  }
+
+  close() {
+    if (this.db) {
+      this.db.close();
+      this.db = null;
     }
   }
 }
 
-export const db = new DatabaseService(); 
+export default new Database(); 

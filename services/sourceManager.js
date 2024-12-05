@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import database from './database';
 
 class SourceManager {
   constructor() {
@@ -17,20 +17,18 @@ class SourceManager {
 
   async loadSources() {
     try {
-      const sourcesStr = await AsyncStorage.getItem('book_sources');
-      if (sourcesStr) {
-        const sources = JSON.parse(sourcesStr);
-        this.sources.clear();
-        sources.forEach(source => {
-          this.sources.set(source.bookSourceUrl, {
-            source: {
-              ...source,
-              enabled: source.enabled ?? true,
-              bookSourceGroup: source.bookSourceGroup || '',
-            }
-          });
+      const sources = await database.getAllSources();
+      this.sources.clear();
+      sources.forEach(source => {
+        this.sources.set(source.bookSourceUrl, {
+          source: {
+            ...source,
+            bookSourceName: source.bookSourceName,
+            bookSourceGroup: source.bookSourceGroup || '',
+            enabled: source.enabled
+          }
         });
-      }
+      });
     } catch (error) {
       console.error('加载书源失败:', error);
       throw error;
@@ -40,17 +38,23 @@ class SourceManager {
   async addSource(source) {
     await this.initPromise;
     try {
-      const formattedSource = {
-        ...source,
-        enabled: source.enabled ?? true,
-        bookSourceGroup: source.bookSourceGroup || '',
-      };
+      if (!source.bookSourceName) {
+        throw new Error('书源名称不能为空');
+      }
+      if (!source.bookSourceUrl) {
+        throw new Error('书源URL不能为空');
+      }
 
-      this.sources.set(formattedSource.bookSourceUrl, {
-        source: formattedSource
+      const id = await database.addSource(source);
+      this.sources.set(source.bookSourceUrl, {
+        source: {
+          ...source,
+          id,
+          bookSourceName: source.bookSourceName,
+          bookSourceGroup: source.bookSourceGroup || '',
+          enabled: source.enabled ?? true
+        }
       });
-      
-      await this.saveSources();
     } catch (error) {
       console.error('添加书源失败:', error);
       throw error;
@@ -60,9 +64,10 @@ class SourceManager {
   async deleteSource(sourceUrl) {
     await this.initPromise;
     try {
-      if (this.sources.has(sourceUrl)) {
+      const source = this.sources.get(sourceUrl);
+      if (source) {
+        await database.removeSource(source.source.id);
         this.sources.delete(sourceUrl);
-        await this.saveSources();
       } else {
         throw new Error('书源不存在');
       }
@@ -75,10 +80,25 @@ class SourceManager {
   async updateSource(source) {
     await this.initPromise;
     try {
+      const existingSource = this.sources.get(source.bookSourceUrl);
+      if (!existingSource) {
+        throw new Error('书源不存在');
+      }
+
+      const updatedSource = {
+        ...existingSource.source,
+        ...source,
+        baseUrl: source.bookSourceUrl,
+        group: source.bookSourceGroup
+      };
+
+      await database.updateSource(updatedSource.id, updatedSource);
       this.sources.set(source.bookSourceUrl, {
-        source: source
+        source: {
+          ...source,
+          id: existingSource.source.id
+        }
       });
-      await this.saveSources();
     } catch (error) {
       console.error('更新书源失败:', error);
       throw error;
@@ -87,19 +107,15 @@ class SourceManager {
 
   async toggleSource(sourceUrl) {
     await this.initPromise;
-    const source = this.sources.get(sourceUrl);
-    if (source) {
-      source.source.enabled = !source.source.enabled;
-      await this.saveSources();
-    }
-  }
-
-  async saveSources() {
     try {
-      const sourcesArray = Array.from(this.sources.values()).map(parser => parser.source);
-      await AsyncStorage.setItem('book_sources', JSON.stringify(sourcesArray));
+      const source = this.sources.get(sourceUrl);
+      if (source) {
+        const enabled = !source.source.enabled;
+        await database.updateSource(source.source.id, { enabled });
+        source.source.enabled = enabled;
+      }
     } catch (error) {
-      console.error('保存书源失败:', error);
+      console.error('切换书源状态失败:', error);
       throw error;
     }
   }
@@ -110,6 +126,28 @@ class SourceManager {
 
   getAllSources() {
     return Array.from(this.sources.values());
+  }
+
+  // 获取所有书源分组
+  getGroups() {
+    const groups = new Set();
+    this.sources.forEach(({ source }) => {
+      if (source.bookSourceGroup) {
+        source.bookSourceGroup.split(',').forEach(group => {
+          groups.add(group.trim());
+        });
+      }
+    });
+    return Array.from(groups);
+  }
+
+  // 按分组获取书源
+  getSourcesByGroup(group) {
+    return Array.from(this.sources.values()).filter(({ source }) => 
+      source.bookSourceGroup && source.bookSourceGroup.split(',').some(g => 
+        g.trim() === group
+      )
+    );
   }
 }
 

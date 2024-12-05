@@ -9,6 +9,7 @@ import MobileBottomTabs from './components/MobileBottomTabs';
 import FloatingMusicPlayer from './components/FloatingMusicPlayer';
 import TrackPlayer from 'react-native-track-player';
 import { setupPlayer } from './services/trackPlayerService';
+import { BookSourceProvider } from './contexts/BookSourceContext';
 
 // 在 App 组件外部注册服务
 TrackPlayer.registerPlaybackService(() => require('./services/trackPlayerService').default);
@@ -21,10 +22,12 @@ const ThemedApp = () => {
     <PaperProvider theme={theme}>
       <MusicPlayerProvider>
         <MusicUserProvider>
-          <NavigationContainer>
-            <MobileBottomTabs />
-            <FloatingMusicPlayer />
-          </NavigationContainer>
+          <BookSourceProvider>
+            <NavigationContainer>
+              <MobileBottomTabs />
+              <FloatingMusicPlayer />
+            </NavigationContainer>
+          </BookSourceProvider>
         </MusicUserProvider>
       </MusicPlayerProvider>
     </PaperProvider>

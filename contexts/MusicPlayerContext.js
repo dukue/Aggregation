@@ -3,7 +3,7 @@ import TrackPlayer, { State, useProgress, Event } from 'react-native-track-playe
 import { setupPlayer } from '../services/trackPlayerService';
 import { musicApi } from '../services/musicApi';
 import { ToastAndroid } from 'react-native';
-import { db } from '../services/database';
+import { storage } from '../services/storageService';
 
 const MusicPlayerContext = createContext();
 
@@ -101,8 +101,8 @@ export const MusicPlayerProvider = ({ children }) => {
         
         // 恢复播放列表和上次播放的歌曲
         const [savedPlaylist, lastPlayedTrack] = await Promise.all([
-          db.getPlaylist(),
-          db.getLastPlayedTrack()
+          storage.getPlaylist(),
+          storage.getLastPlayedTrack()
         ]);
         
         console.log('Restored playlist:', savedPlaylist);
@@ -142,7 +142,7 @@ export const MusicPlayerProvider = ({ children }) => {
   // 添加保存最后播放歌曲的逻辑
   useEffect(() => {
     if (currentTrack) {
-      db.saveLastPlayedTrack(currentTrack).catch(error => {
+      storage.saveLastPlayedTrack(currentTrack).catch(error => {
         console.error('保存最后播放歌曲失败:', error);
       });
     }
@@ -152,7 +152,7 @@ export const MusicPlayerProvider = ({ children }) => {
   useEffect(() => {
     const loadLikedSongs = async () => {
       try {
-        const saved = await db.getLikedSongs();
+        const saved = await storage.getLikedSongs();
         setLikedSongs(saved || []);
       } catch (error) {
         console.error('加载收藏列表失败:', error);
@@ -228,8 +228,8 @@ export const MusicPlayerProvider = ({ children }) => {
 
   // 修改播放列表更新函数
   const updatePlaylist = async (newPlaylist) => {
-    await db.savePlaylist(newPlaylist); // 保存到数据库
-    setPlaylist(newPlaylist); // 更新状态
+    await storage.savePlaylist(newPlaylist);
+    setPlaylist(newPlaylist);
   };
 
   // 修改播放整个歌单的功能
@@ -299,9 +299,9 @@ export const MusicPlayerProvider = ({ children }) => {
       setIsPlaying(true);
 
       // 保存到最近播放
-      await db.saveLastPlayedTrack(track);
+      await storage.saveLastPlayedTrack(track);
 
-      // 只在歌曲不在播放列表中时更���播放列表
+      // 只在歌曲不在播放列表中时更播放列表
       const trackExists = playlist.some(t => t.id === track.id);
       if (!trackExists) {
         const newPlaylist = [...playlist, track];
@@ -388,7 +388,7 @@ export const MusicPlayerProvider = ({ children }) => {
           nextIndex = currentIndex >= 0 ? currentIndex : 0;
           break;
         default:
-          // 顺序播放模式：播放下一首，到末尾则回到开头
+          // 顺序播放模式：播放下一首，到末���则回到开头
           nextIndex = currentIndex < playlist.length - 1 ? currentIndex + 1 : 0;
       }
 

@@ -146,6 +146,43 @@ class SourceParser {
       throw error;
     }
   }
+
+  // 获取分类列表
+  async getCategories() {
+    try {
+      const response = await axios.get(this.source.categoriesUrl, { 
+        headers: this.headers 
+      });
+      
+      // 根据不同书源的数据结构进行解析
+      if (this.source.ruleCategories) {
+        const doc = this.parseHTML(response.data);
+        const categoryList = this.querySelectorAll(doc, this.source.ruleCategories.list);
+        
+        return Array.from(categoryList).map(element => ({
+          id: this.getAttribute(element, 'data-id') || Math.random().toString(36).slice(2),
+          name: this.getText(this.querySelector(element, this.source.ruleCategories.name)),
+          url: this.getAttribute(this.querySelector(element, this.source.ruleCategories.url), 'href'),
+          bookCount: parseInt(this.getText(this.querySelector(element, this.source.ruleCategories.bookCount))) || 0
+        }));
+      }
+      
+      // 如果是JSON格式的响应
+      if (typeof response.data === 'object') {
+        return response.data.map(category => ({
+          id: category.id || Math.random().toString(36).slice(2),
+          name: category.name,
+          url: category.url,
+          bookCount: category.bookCount || 0
+        }));
+      }
+      
+      return [];
+    } catch (error) {
+      console.error('获取分类失败:', error);
+      return [];
+    }
+  }
 }
 
 export default SourceParser; 

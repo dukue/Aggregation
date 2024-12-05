@@ -43,6 +43,7 @@ import {
   PackageOpen,
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import EditSourceDialog from '../../components/EditSourceDialog';
 
 const SourceManager = ({ navigation }) => {
   const theme = useTheme();
@@ -72,6 +73,7 @@ const SourceManager = ({ navigation }) => {
   const [selectedSources, setSelectedSources] = useState(new Set());
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
+  const [currentSource, setCurrentSource] = useState(null);
 
   useEffect(() => {
     loadSources();
@@ -155,7 +157,7 @@ const SourceManager = ({ navigation }) => {
       setDeleteDialogVisible(false);
       setSourceToDelete(null);
     } catch (error) {
-      console.error('��除失败:', error);
+      console.error('除失败:', error);
       showSnackbar('书源删除失败');
     }
   };
@@ -261,29 +263,25 @@ const SourceManager = ({ navigation }) => {
     }
   };
 
-  const handleEditSource = async () => {
-    try {
-      const sourceData = JSON.parse(sourceText);
-      if (!sourceData.bookSourceUrl || !sourceData.bookSourceName) {
-        throw new Error('书源格式不正确');
-      }
-      
-      await sourceManager.updateSource(sourceData);
-      await loadSources();
-      setEditDialogVisible(false);
-      setEditingSource(null);
-      setSourceText('');
-      showSnackbar('书源更新成功');
-    } catch (error) {
-      console.error('更新失败:', error);
-      showSnackbar('书源格式错误');
-    }
+  const handleEditSource = (source) => {
+    setCurrentSource(source);
+    setEditDialogVisible(true);
   };
 
-  const openEditDialog = (source) => {
-    setEditingSource(source);
-    setSourceText(JSON.stringify(source.source, null, 2));
-    setEditDialogVisible(true);
+  const handleSaveSource = async (sourceData) => {
+    try {
+      if (currentSource) {
+        await sourceManager.updateSource(sourceData);
+      } else {
+        await sourceManager.addSource(sourceData);
+      }
+      setEditDialogVisible(false);
+      await loadSources();
+      showSnackbar('保存成功');
+    } catch (error) {
+      console.error('保存书源失败:', error);
+      showSnackbar('保存失败: ' + error.message);
+    }
   };
 
   const showGroupMenu = () => {
@@ -327,7 +325,7 @@ const SourceManager = ({ navigation }) => {
       await loadSources();
       setSelectedSources(new Set());
       setIsSelectionMode(false);
-      showSnackbar(`成功删除 ${count} 个书源`);  // 使用保存的数量
+      showSnackbar(`成功删除 ${count} 个书`);  // 用保存的数量
     } catch (error) {
       console.error('批量删除失败:', error);
       showSnackbar('删除失败');
@@ -446,7 +444,7 @@ const SourceManager = ({ navigation }) => {
                   if (isSelectionMode) {
                     toggleSelection(source.source.bookSourceUrl);
                   } else {
-                    openEditDialog(source);
+                    handleEditSource(source);
                   }
                 }}
                 onLongPress={() => {
@@ -592,7 +590,7 @@ const SourceManager = ({ navigation }) => {
             ) : (
               <TextInput
                 mode="outlined"
-                label="JSON链接"
+                label="JSON接"
                 value={urlInput}
                 onChangeText={setUrlInput}
                 placeholder="http://example.com/source.json"
@@ -644,41 +642,12 @@ const SourceManager = ({ navigation }) => {
         </Dialog>
       </Portal>
 
-      <Portal>
-        <Dialog 
-          visible={editDialogVisible} 
-          onDismiss={() => setEditDialogVisible(false)}
-          style={styles.editDialog}
-        >
-          <Dialog.Title>编辑书源</Dialog.Title>
-          <Dialog.ScrollArea style={styles.scrollArea}>
-            <View style={styles.editHeader}>
-              <Text variant="bodyMedium">书源名称：{editingSource?.source.bookSourceName}</Text>
-              <Text 
-                variant="bodySmall" 
-                style={{ color: theme.colors.onSurfaceVariant }}
-                numberOfLines={1}
-              >
-                {editingSource?.source.bookSourceUrl}
-              </Text>
-            </View>
-            <TextInput
-              mode="outlined"
-              multiline
-              value={sourceText}
-              onChangeText={setSourceText}
-              style={styles.editInput}
-              contentStyle={styles.editInputContent}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </Dialog.ScrollArea>
-          <Dialog.Actions>
-            <Button onPress={() => setEditDialogVisible(false)}>取消</Button>
-            <Button onPress={handleEditSource}>保存</Button>
-          </Dialog.Actions>
-        </Dialog>
-      </Portal>
+      <EditSourceDialog
+        visible={editDialogVisible}
+        onDismiss={() => setEditDialogVisible(false)}
+        source={currentSource}
+        onSave={handleSaveSource}
+      />
 
       <Snackbar
         visible={snackbarVisible}
