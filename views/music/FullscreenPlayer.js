@@ -44,6 +44,7 @@ const FullscreenPlayer = ({ navigation, route }) => {
     togglePlayMode,
     toggleLike,
     isLiked,
+    setShowFloatingPlayer,
   } = useMusicPlayer();
 
   const [playlistVisible, setPlaylistVisible] = useState(false);
@@ -161,6 +162,11 @@ const FullscreenPlayer = ({ navigation, route }) => {
       });
     };
   }, [navigation]);
+
+  useEffect(() => {
+    setShowFloatingPlayer(false);
+    return () => setShowFloatingPlayer(true);
+  }, []);
 
   return (
     <Animated.View style={[styles.container, { opacity: fadeAnim }]}>

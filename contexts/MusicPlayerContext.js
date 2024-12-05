@@ -70,6 +70,7 @@ export const MusicPlayerProvider = ({ children }) => {
   const progressRef = useRef(progress);
   progressRef.current = progress;
   const [likedSongs, setLikedSongs] = useState([]);
+  const [showFloatingPlayer, setShowFloatingPlayer] = useState(true);
 
   // 确保在组件挂载时初始化进度
   useEffect(() => {
@@ -88,74 +89,42 @@ export const MusicPlayerProvider = ({ children }) => {
 
   // 初始化播放器
   useEffect(() => {
-    let mounted = true;
-
-    async function setup() {
-      try {
-        console.log('Starting player setup...');
-        
-        if (!mounted) {
-          console.log('Component unmounted, canceling setup');
-          return;
-        }
-
-        const isSetup = await setupPlayer();
-        console.log('Setup result:', isSetup);
-
-        if (mounted && isSetup) {
-          setIsReady(true);
-          console.log('Player is ready');
-        } else {
-          console.log('Setup failed or component unmounted');
-        }
-      } catch (error) {
-        console.error('Setup error:', error);
-        if (mounted) {
-          setIsReady(false);
-        }
-      }
-    }
-
-    setup();
-
-    return () => {
-      console.log('Cleaning up player context');
-      mounted = false;
-    };
-  }, []);
-
-  // 修改初始化逻辑
-  useEffect(() => {
+    let isMounted = true;
+    
     const setup = async () => {
       try {
-        await setupPlayer();
+        // 确保播放器初始化
+        const isSetup = await setupPlayer();
+        if (!isSetup || !isMounted) return;
+        
+        console.log('Player setup complete');
         
         // 恢复播放列表和上次播放的歌曲
         const [savedPlaylist, lastPlayedTrack] = await Promise.all([
           db.getPlaylist(),
           db.getLastPlayedTrack()
         ]);
+        
+        console.log('Restored playlist:', savedPlaylist);
+        console.log('Last played track:', lastPlayedTrack);
 
         if (savedPlaylist.length > 0) {
           setPlaylist(savedPlaylist);
           
           // 确定要播放的歌曲
           const trackToPlay = lastPlayedTrack || savedPlaylist[0];
-          setCurrentTrack(trackToPlay);
-          
-          try {
-            // 格式化并添加歌曲
-            const formattedTrack = await formatTrackForPlayer(trackToPlay);
-            await TrackPlayer.reset();
-            await TrackPlayer.add(formattedTrack);
+          if (trackToPlay && isMounted) {
+            console.log('Setting initial track:', trackToPlay);
+            setCurrentTrack(trackToPlay);
             
-            // 恢复播放进度
-            const position = await db.getProgress(trackToPlay.id);
-            if (position > 0) {
-              await TrackPlayer.seekTo(position);
+            // 准备播放器
+            try {
+              const formattedTrack = await formatTrackForPlayer(trackToPlay);
+              await TrackPlayer.reset();
+              await TrackPlayer.add(formattedTrack);
+            } catch (error) {
+              console.error('Failed to prepare player:', error);
             }
-          } catch (error) {
-            console.error('恢复播放失败:', error);
           }
         }
       } catch (error) {
@@ -164,6 +133,10 @@ export const MusicPlayerProvider = ({ children }) => {
     };
 
     setup();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // 添加保存最后播放歌曲的逻辑
@@ -188,7 +161,7 @@ export const MusicPlayerProvider = ({ children }) => {
     loadLikedSongs();
   }, []);
 
-  // 修改进度更新逻辑
+  // 修改进度更逻辑
   useEffect(() => {
     let progressUpdateInterval;
 
@@ -296,39 +269,49 @@ export const MusicPlayerProvider = ({ children }) => {
     }
   };
 
-  // 修改播放单曲的功能
+  // 修改播放音乐的函数
   const playMusic = async (track) => {
     try {
+      if (!track || !track.id) {
+        console.error('Invalid track:', track);
+        return;
+      }
+
+      // 先设置当前曲目，这样可以立即显示悬浮窗
+      setCurrentTrack(track);
+      console.log('Setting current track:', track);
+
+      // 确保播放器已初始化
+      const isSetup = await setupPlayer();
+      if (!isSetup) {
+        throw new Error('播放器初始化失败');
+      }
+
       // 重置播放器
       await TrackPlayer.reset();
-      
+
       // 格式化并添加歌曲
       const formattedTrack = await formatTrackForPlayer(track);
       await TrackPlayer.add(formattedTrack);
-      
-      // 更新当前播放歌曲
-      setCurrentTrack(track);
-      
-      // 恢复播放进度
-      const position = await db.getProgress(track.id);
-      if (position > 0) {
-        await TrackPlayer.seekTo(position);
-      }
-      
+
       // 开始播放
       await TrackPlayer.play();
       setIsPlaying(true);
-      
-      // 只在歌曲不在播放列表中时更新播放列表
+
+      // 保存到最近播放
+      await db.saveLastPlayedTrack(track);
+
+      // 只在歌曲不在播放列表中时更���播放列表
       const trackExists = playlist.some(t => t.id === track.id);
       if (!trackExists) {
         const newPlaylist = [...playlist, track];
-        await db.savePlaylist(newPlaylist); // 只保存到数据库
-        setPlaylist(newPlaylist); // 直接更新状态
+        await updatePlaylist(newPlaylist);
       }
     } catch (error) {
       console.error('播放失败:', error);
       ToastAndroid.show(error.message || '播放失败', ToastAndroid.SHORT);
+      // 如果播放失败，重置 currentTrack
+      setCurrentTrack(null);
     }
   };
 
@@ -534,6 +517,8 @@ export const MusicPlayerProvider = ({ children }) => {
     likedSongs,
     toggleLike,
     isLiked,
+    showFloatingPlayer,
+    setShowFloatingPlayer,
   }), [
     currentTrack,
     isPlaying,
@@ -543,6 +528,7 @@ export const MusicPlayerProvider = ({ children }) => {
     seekTo,
     likedSongs,
     isLiked,
+    showFloatingPlayer,
   ]);
 
   return (

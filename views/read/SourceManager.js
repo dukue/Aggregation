@@ -26,19 +26,21 @@ import {
   Library,
   QrCode,
   Download,
-  RefreshCcw,
+  RefreshCw,
   Search,
   ChevronDown,
   CheckCircle,
   Circle,
-  MoreVertical,
   Square,
   CheckSquare,
   ToggleLeft,
   ToggleRight,
   Trash2,
   Plus,
-  PenLine,
+  FileInput,
+  FileOutput,
+  Package,
+  PackageOpen,
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -69,6 +71,7 @@ const SourceManager = ({ navigation }) => {
   const [menuWidth, setMenuWidth] = useState(0);
   const [selectedSources, setSelectedSources] = useState(new Set());
   const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [fabOpen, setFabOpen] = useState(false);
 
   useEffect(() => {
     loadSources();
@@ -152,7 +155,7 @@ const SourceManager = ({ navigation }) => {
       setDeleteDialogVisible(false);
       setSourceToDelete(null);
     } catch (error) {
-      console.error('删除失败:', error);
+      console.error('��除失败:', error);
       showSnackbar('书源删除失败');
     }
   };
@@ -201,7 +204,7 @@ const SourceManager = ({ navigation }) => {
       if (importType === 'text') {
         sourcesToImport = JSON.parse(jsonInput);
       } else {
-        setImportProgress('正在从网络获取书源...');
+        setImportProgress('正在网络获取书源...');
         const response = await fetch(urlInput);
         if (!response.ok) {
           throw new Error('获取书源失败');
@@ -331,6 +334,45 @@ const SourceManager = ({ navigation }) => {
     }
   };
 
+  const handleExportSources = async () => {
+    try {
+      if (sources.length === 0) {
+        showSnackbar('没有可导出的书源');
+        return;
+      }
+
+      // 准备导出数据
+      const sourcesToExport = sources.map(source => source.source);
+      const sourcesData = JSON.stringify(sourcesToExport, null, 2);
+      
+      // 导出到文件
+      const path = `${RNFS.ExternalDirectoryPath}/book_sources.json`;
+      await RNFS.writeFile(path, sourcesData, 'utf8');
+      
+      showSnackbar(`书源已导出到: ${path}`);
+    } catch (error) {
+      console.error('导出失败:', error);
+      showSnackbar('书源导出失败');
+    }
+  };
+
+  const handleDeleteAll = async () => {
+    try {
+      if (sources.length === 0) {
+        showSnackbar('没有可删除的书源');
+        return;
+      }
+
+      // 清空所有书源
+      await sourceManager.clearSources();
+      setSources([]);
+      showSnackbar('已清空所有书源');
+    } catch (error) {
+      console.error('清空失败:', error);
+      showSnackbar('清空书源失败');
+    }
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -367,70 +409,7 @@ const SourceManager = ({ navigation }) => {
             }
             onPress={handleSelectAll}
           />
-
-          <IconButton
-            icon={({ size, color }) => <MoreVertical size={size} color={color} />}
-            onPress={() => setMenuVisible(true)}
-          />
         </View>
-
-        <Menu
-          visible={groupMenuVisible}
-          onDismiss={() => setGroupMenuVisible(false)}
-          anchor={menuAnchor}
-          contentStyle={[
-            styles.groupMenu,
-            { minWidth: menuWidth },
-          ]}
-        >
-          <Menu.Item
-            title="全部"
-            onPress={() => {
-              setFilterValue('all');
-              setGroupMenuVisible(false);
-            }}
-            leadingIcon={filterValue === 'all' ? "check" : undefined}
-          />
-          <Divider />
-          {groups.map((group) => (
-            <Menu.Item
-              key={group}
-              title={group}
-              onPress={() => {
-                setFilterValue(group);
-                setGroupMenuVisible(false);
-              }}
-              leadingIcon={filterValue === group ? "check" : undefined}
-            />
-          ))}
-        </Menu>
-
-        <Menu
-          visible={menuVisible}
-          onDismiss={() => setMenuVisible(false)}
-          anchor={<View />}
-        >
-          <Menu.Item 
-            leadingIcon={({ size, color }) => <Library size={size} color={color} />}
-            onPress={handleImportFile} 
-            title="导入文件"
-          />
-          <Menu.Item 
-            leadingIcon={({ size, color }) => <QrCode size={size} color={color} />}
-            onPress={() => {}} 
-            title="扫描二维码"
-          />
-          <Menu.Item 
-            leadingIcon={({ size, color }) => <Download size={size} color={color} />}
-            onPress={() => {}} 
-            title="导出书源"
-          />
-          <Menu.Item 
-            leadingIcon={({ size, color }) => <RefreshCcw size={size} color={color} />}
-            onPress={() => loadSources()} 
-            title="刷新"
-          />
-        </Menu>
       </View>
 
       {isSelectionMode && selectedSources.size > 0 && (
@@ -536,14 +515,52 @@ const SourceManager = ({ navigation }) => {
         ))}
       </ScrollView>
 
-      <FAB
-        icon={({ size, color }) => <Plus size={size} color={color} />}
-        style={[styles.fab, { backgroundColor: theme.colors.primary }]}
+      <FAB.Group
+        open={fabOpen}
+        visible
+        icon={({ size, color }) => 
+          fabOpen ? 
+            <PackageOpen size={size} color={color} /> : 
+            <Package size={size} color={color} />
+        }
+        actions={[
+          {
+            icon: ({ size, color }) => <Plus size={size} color={color} />,
+            label: '新建书源',
+            onPress: () => {
+              setSelectedSource(null);
+              setSourceText('');
+              setDialogVisible(true);
+            },
+          },
+          {
+            icon: ({ size, color }) => <FileInput size={size} color={color} />,
+            label: '导入书源',
+            onPress: handleImportFile,
+          },
+          {
+            icon: ({ size, color }) => <FileOutput size={size} color={color} />,
+            label: '导出书源',
+            onPress: handleExportSources,
+          },
+          {
+            icon: ({ size, color }) => <RefreshCw size={size} color={color} />,
+            label: '刷新列表',
+            onPress: loadSources,
+          },
+          {
+            icon: ({ size, color }) => <Trash2 size={size} color={color} />,
+            label: '清空书源',
+            onPress: handleDeleteAll,
+          },
+        ]}
+        onStateChange={({ open }) => setFabOpen(open)}
         onPress={() => {
-          setSelectedSource(null);
-          setSourceText('');
-          setDialogVisible(true);
+          if (fabOpen) {
+            setFabOpen(false);
+          }
         }}
+        style={styles.fab}
       />
 
       <Portal>
@@ -611,7 +628,7 @@ const SourceManager = ({ navigation }) => {
 
       <Portal>
         <Dialog visible={deleteDialogVisible} onDismiss={() => setDeleteDialogVisible(false)}>
-          <Dialog.Title>删��书源</Dialog.Title>
+          <Dialog.Title>删书源</Dialog.Title>
           <Dialog.Content>
             <Text>确定要删除书源 "{sourceToDelete?.source.bookSourceName}" 吗？</Text>
           </Dialog.Content>
