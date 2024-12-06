@@ -1,180 +1,316 @@
 import React, { useState, useEffect } from 'react';
-import { View, ScrollView } from 'react-native';
-import { Dialog, Portal, TextInput, Button, Text, useTheme, SegmentedButtons, Switch } from 'react-native-paper';
+import { View, ScrollView, StyleSheet } from 'react-native';
+import { 
+  Portal, 
+  Dialog, 
+  TextInput, 
+  Button, 
+  Text,
+  HelperText,
+  Switch,
+  Divider,
+  useTheme,
+  IconButton
+} from 'react-native-paper';
+import { ChevronDown, ChevronUp } from 'lucide-react-native';
 
-const EditSourceDialog = ({ visible, onDismiss, source, onSave }) => {
+const EditSourceDialog = ({ visible, source, onDismiss, onSave }) => {
   const theme = useTheme();
-  const [currentTab, setCurrentTab] = useState('basic');
   const [formData, setFormData] = useState({
-    bookSourceUrl: '',
     bookSourceName: '',
+    bookSourceUrl: '',
     bookSourceGroup: '',
+    enabled: true,
+    header: '',
+    loginUrl: '',
+    // 搜索规则
     searchUrl: '',
-    ruleSearch: {},
-    ruleExplore: {},
-    ruleBookInfo: {},
-    ruleToc: {},
-    ruleContent: {},
+    searchList: '',
+    searchName: '',
+    searchAuthor: '',
+    searchKind: '',
+    searchLastChapter: '',
+    searchIntroduce: '',
+    searchCoverUrl: '',
+    searchNoteUrl: '',
+    // 详情规则
+    ruleBookName: '',
+    ruleBookAuthor: '',
+    ruleBookKind: '',
+    ruleBookLastChapter: '',
+    ruleBookIntroduce: '',
+    ruleBookCoverUrl: '',
+    // 目录规则
+    ruleChapterList: '',
+    ruleChapterName: '',
+    ruleChapterUrl: '',
+    ruleContentUrl: '',
+    // 正文规则
+    ruleBookContent: '',
   });
+  const [expandedSections, setExpandedSections] = useState({
+    basic: true,
+    search: false,
+    detail: false,
+    chapter: false,
+    content: false,
+  });
+  const [errors, setErrors] = useState({});
 
   useEffect(() => {
-    if (source) {
+    console.log('Source received in EditSourceDialog - Full source object:', JSON.stringify(source, null, 2));
+    if (source && source.source) {
+      // 检查规则对象是否存在
+      const ruleSearch = source.source.ruleSearch || {};
+      const ruleBookInfo = source.source.ruleBookInfo || {};
+      const ruleToc = source.source.ruleToc || {};
+      const ruleContent = source.source.ruleContent || {};
+
+      console.log('Parsed rules:', {
+        ruleSearch,
+        ruleBookInfo,
+        ruleToc,
+        ruleContent
+      });
+
+      const newFormData = {
+        bookSourceName: source.source.bookSourceName || '',
+        bookSourceUrl: source.source.bookSourceUrl || '',
+        bookSourceGroup: source.source.bookSourceGroup || '',
+        enabled: source.source.enabled !== false,
+        header: source.source.header || '',
+        loginUrl: source.source.loginUrl || '',
+        // 搜索规则
+        searchUrl: source.source.searchUrl || ruleSearch.url || '',
+        searchList: ruleSearch.list || '',
+        searchName: ruleSearch.name || '',
+        searchAuthor: ruleSearch.author || '',
+        searchKind: ruleSearch.kind || '',
+        searchLastChapter: ruleSearch.lastChapter || '',
+        searchIntroduce: ruleSearch.introduce || '',
+        searchCoverUrl: ruleSearch.coverUrl || '',
+        searchNoteUrl: ruleSearch.noteUrl || '',
+        // 详情规则
+        ruleBookName: ruleBookInfo.name || '',
+        ruleBookAuthor: ruleBookInfo.author || '',
+        ruleBookKind: ruleBookInfo.kind || '',
+        ruleBookLastChapter: ruleBookInfo.lastChapter || '',
+        ruleBookIntroduce: ruleBookInfo.introduce || '',
+        ruleBookCoverUrl: ruleBookInfo.coverUrl || '',
+        // 目录规则
+        ruleChapterList: ruleToc.chapterList || '',
+        ruleChapterName: ruleToc.chapterName || '',
+        ruleChapterUrl: ruleToc.chapterUrl || '',
+        ruleContentUrl: ruleToc.contentUrl || '',
+        // 正文规则
+        ruleBookContent: ruleContent.content || '',
+      };
+
+      console.log('Setting new form data:', newFormData);
+      setFormData(newFormData);
+    } else {
+      console.log('Resetting form data to defaults');
       setFormData({
-        bookSourceUrl: source.bookSourceUrl || '',
-        bookSourceName: source.bookSourceName || '',
-        bookSourceGroup: source.bookSourceGroup || '',
-        searchUrl: source.searchUrl || '',
-        ruleSearch: typeof source.ruleSearch === 'string' ? JSON.parse(source.ruleSearch) : source.ruleSearch || {},
-        ruleExplore: typeof source.ruleExplore === 'string' ? JSON.parse(source.ruleExplore) : source.ruleExplore || {},
-        ruleBookInfo: typeof source.ruleBookInfo === 'string' ? JSON.parse(source.ruleBookInfo) : source.ruleBookInfo || {},
-        ruleToc: typeof source.ruleToc === 'string' ? JSON.parse(source.ruleToc) : source.ruleToc || {},
-        ruleContent: typeof source.ruleContent === 'string' ? JSON.parse(source.ruleContent) : source.ruleContent || {},
+        bookSourceName: '',
+        bookSourceUrl: '',
+        bookSourceGroup: '',
+        enabled: true,
+        header: '',
+        loginUrl: '',
+        searchUrl: '',
+        searchList: '',
+        searchName: '',
+        searchAuthor: '',
+        searchKind: '',
+        searchLastChapter: '',
+        searchIntroduce: '',
+        searchCoverUrl: '',
+        searchNoteUrl: '',
+        ruleBookName: '',
+        ruleBookAuthor: '',
+        ruleBookKind: '',
+        ruleBookLastChapter: '',
+        ruleBookIntroduce: '',
+        ruleBookCoverUrl: '',
+        ruleChapterList: '',
+        ruleChapterName: '',
+        ruleChapterUrl: '',
+        ruleContentUrl: '',
+        ruleBookContent: '',
       });
     }
   }, [source]);
 
-  const updateFormData = (key, value, category = null) => {
-    if (category) {
-      setFormData(prev => ({
-        ...prev,
-        [category]: { ...prev[category], [key]: value }
-      }));
-    } else {
-      setFormData(prev => ({ ...prev, [key]: value }));
+  const validateForm = () => {
+    const newErrors = {};
+    if (!formData.bookSourceName) {
+      newErrors.bookSourceName = '书源名称不能为空';
+    }
+    if (!formData.bookSourceUrl) {
+      newErrors.bookSourceUrl = '书源URL不能为空';
+    }
+    if (!formData.searchUrl) {
+      newErrors.searchUrl = '搜索URL不能为空';
+    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSave = () => {
+    if (validateForm()) {
+      onSave(formData);
     }
   };
 
-  const renderBasicSection = () => (
-    <View>
-      <TextInput
-        label="书源URL"
-        value={formData.bookSourceUrl}
-        onChangeText={value => updateFormData('bookSourceUrl', value)}
-        style={styles.input}
-      />
-      <TextInput
-        label="书源名称"
-        value={formData.bookSourceName}
-        onChangeText={value => updateFormData('bookSourceName', value)}
-        style={styles.input}
-      />
-      <TextInput
-        label="书源分组"
-        value={formData.bookSourceGroup}
-        onChangeText={value => updateFormData('bookSourceGroup', value)}
-        style={styles.input}
-      />
-    </View>
-  );
-
-  const renderSearchSection = () => (
-    <View>
-      <TextInput
-        label="搜索URL"
-        value={formData.searchUrl}
-        onChangeText={value => updateFormData('searchUrl', value)}
-        style={styles.input}
-      />
-      <Text style={styles.sectionTitle}>搜索规则</Text>
-      <TextInput
-        label="书籍列表"
-        value={formData.ruleSearch.bookList}
-        onChangeText={value => updateFormData('bookList', value, 'ruleSearch')}
-        style={styles.input}
-      />
-      <TextInput
-        label="书名"
-        value={formData.ruleSearch.name}
-        onChangeText={value => updateFormData('name', value, 'ruleSearch')}
-        style={styles.input}
-      />
-      <TextInput
-        label="作者"
-        value={formData.ruleSearch.author}
-        onChangeText={value => updateFormData('author', value, 'ruleSearch')}
-        style={styles.input}
-      />
-    </View>
-  );
+  const renderSection = (title, sectionKey, fields) => {
+    const isExpanded = expandedSections[sectionKey];
+    console.log(`Rendering section ${sectionKey}:`, { 
+      isExpanded, 
+      formData: fields.map(f => ({ key: f.key, value: formData[f.key] }))
+    });
+    
+    return (
+      <View style={styles.section}>
+        <Button
+          mode="text"
+          onPress={() => setExpandedSections(prev => ({
+            ...prev,
+            [sectionKey]: !prev[sectionKey]
+          }))}
+          contentStyle={styles.sectionHeader}
+          icon={({ size, color }) => 
+            isExpanded ? 
+              <ChevronUp size={size} color={color} /> : 
+              <ChevronDown size={size} color={color} />
+          }
+        >
+          {title}
+        </Button>
+        {isExpanded && (
+          <View style={styles.sectionContent}>
+            {fields.map(({ key, label, helper }) => {
+              console.log(`Rendering field ${key}:`, formData[key]);
+              return (
+                <View key={key} style={styles.inputContainer}>
+                  <TextInput
+                    mode="outlined"
+                    label={label}
+                    value={String(formData[key] || '')}
+                    onChangeText={(text) => {
+                      console.log(`Updating ${key}:`, text);
+                      setFormData(prev => ({ ...prev, [key]: text }));
+                    }}
+                    error={errors[key]}
+                    style={styles.input}
+                  />
+                  {helper && (
+                    <HelperText type="info" style={styles.helperText}>
+                      {helper}
+                    </HelperText>
+                  )}
+                  {errors[key] && (
+                    <HelperText type="error">
+                      {errors[key]}
+                    </HelperText>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        )}
+        <Divider />
+      </View>
+    );
+  };
 
   return (
     <Portal>
       <Dialog visible={visible} onDismiss={onDismiss} style={styles.dialog}>
-        <View style={styles.dialogContainer}>
-          <Dialog.Title>编辑书源</Dialog.Title>
-          
-          <View style={styles.tabContainer}>
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false}
-            >
-              <SegmentedButtons
-                value={currentTab}
-                onValueChange={setCurrentTab}
-                buttons={[
-                  { value: 'basic', label: '基本' },
-                  { value: 'search', label: '搜索' },
-                  { value: 'explore', label: '发现' },
-                  { value: 'detail', label: '详情' },
-                  { value: 'toc', label: '目录' },
-                  { value: 'content', label: '正文' },
-                ]}
-                style={styles.segmentedButtons}
-              />
-            </ScrollView>
-          </View>
-          
-          <View style={styles.contentContainer}>
-            <ScrollView>
-              {currentTab === 'basic' && renderBasicSection()}
-              {currentTab === 'search' && renderSearchSection()}
-            </ScrollView>
-          </View>
+        <Dialog.Title>编辑书源</Dialog.Title>
+        <Dialog.ScrollArea style={styles.scrollArea}>
+          <ScrollView>
+            {renderSection('基本信息', 'basic', [
+              { key: 'bookSourceName', label: '书源名称', helper: '书源的显示名称' },
+              { key: 'bookSourceUrl', label: '书源URL', helper: '书源网站的根地址' },
+              { key: 'bookSourceGroup', label: '书源分组', helper: '使用逗号分隔多个分组' },
+              { key: 'header', label: '请求头', helper: 'JSON格式的请求头信息' },
+              { key: 'loginUrl', label: '登录地址', helper: '需要登录的书源填写' },
+            ])}
+            
+            {renderSection('搜索规则', 'search', [
+              { key: 'searchUrl', label: '搜索URL', helper: '搜索关键词使用{{key}}替换' },
+              { key: 'searchList', label: '搜索列表规则' },
+              { key: 'searchName', label: '书名规则' },
+              { key: 'searchAuthor', label: '作者规则' },
+              { key: 'searchKind', label: '分类规则' },
+              { key: 'searchLastChapter', label: '最新章节规则' },
+              { key: 'searchIntroduce', label: '简介规则' },
+              { key: 'searchCoverUrl', label: '封面规则' },
+              { key: 'searchNoteUrl', label: '详情页URL规则' },
+            ])}
 
-          <Dialog.Actions>
-            <Button onPress={onDismiss}>取消</Button>
-            <Button onPress={() => onSave(formData)}>保存</Button>
-          </Dialog.Actions>
-        </View>
+            {renderSection('详情规则', 'detail', [
+              { key: 'ruleBookName', label: '书名规则' },
+              { key: 'ruleBookAuthor', label: '作者规则' },
+              { key: 'ruleBookKind', label: '分类规则' },
+              { key: 'ruleBookLastChapter', label: '最新章节规' },
+              { key: 'ruleBookIntroduce', label: '简介规则' },
+              { key: 'ruleBookCoverUrl', label: '封面规则' },
+            ])}
+
+            {renderSection('目录规则', 'chapter', [
+              { key: 'ruleChapterList', label: '目录列表规则' },
+              { key: 'ruleChapterName', label: '章节名规则' },
+              { key: 'ruleChapterUrl', label: '章节URL规则' },
+              { key: 'ruleContentUrl', label: '正文URL规则' },
+            ])}
+
+            {renderSection('正文规则', 'content', [
+              { key: 'ruleBookContent', label: '正文规则' },
+            ])}
+          </ScrollView>
+        </Dialog.ScrollArea>
+        <Dialog.Actions>
+          <Button onPress={onDismiss}>取消</Button>
+          <Button onPress={handleSave}>保存</Button>
+        </Dialog.Actions>
       </Dialog>
     </Portal>
   );
 };
 
-const styles = {
+const styles = StyleSheet.create({
   dialog: {
-    width: '90%',
-    alignSelf: 'center',
-    backgroundColor: 'white',
-    borderRadius: 8,
+    maxHeight: '80%',
   },
-  dialogContainer: {
-    height: 600,
+  scrollArea: {
+    paddingHorizontal: 0,
   },
-  tabContainer: {
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
+  section: {
+    marginBottom: 8,
+  },
+  sectionHeader: {
+    justifyContent: 'flex-start',
+  },
+  sectionContent: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
   },
-  segmentedButtons: {
-    minWidth: 500,
-  },
-  contentContainer: {
-    flex: 1,
-    padding: 16,
-    maxHeight: 450,
+  inputContainer: {
+    marginBottom: 8,
   },
   input: {
-    marginBottom: 12,
-    backgroundColor: 'transparent',
+    marginBottom: 4,
   },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginTop: 16,
-    marginBottom: 8,
-  }
-};
+  helperText: {
+    marginTop: -4,
+  },
+  switchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+});
 
 export default EditSourceDialog; 

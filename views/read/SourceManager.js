@@ -44,6 +44,7 @@ import {
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import EditSourceDialog from '../../components/EditSourceDialog';
+import { database } from '../../services/database';
 
 const SourceManager = ({ navigation }) => {
   const theme = useTheme();
@@ -65,7 +66,7 @@ const SourceManager = ({ navigation }) => {
   const [deleteDialogVisible, setDeleteDialogVisible] = useState(false);
   const [sourceToDelete, setSourceToDelete] = useState(null);
   const [editDialogVisible, setEditDialogVisible] = useState(false);
-  const [editingSource, setEditingSource] = useState(null);
+  const [currentEditSource, setCurrentEditSource] = useState(null);
   const [groupMenuVisible, setGroupMenuVisible] = useState(false);
   const groupButtonRef = useRef(null);
   const [menuAnchor, setMenuAnchor] = useState({ x: 0, y: 0 });
@@ -76,7 +77,18 @@ const SourceManager = ({ navigation }) => {
   const [currentSource, setCurrentSource] = useState(null);
 
   useEffect(() => {
-    loadSources();
+    const initializeApp = async () => {
+      try {
+        await database.init();
+        await sourceManager.initPromise;
+        await loadSources();
+      } catch (error) {
+        console.error('初始化失败:', error);
+        showSnackbar('初始化失败');
+      }
+    };
+
+    initializeApp();
   }, []);
 
   useEffect(() => {
@@ -219,7 +231,7 @@ const SourceManager = ({ navigation }) => {
         sourcesToImport = [sourcesToImport];
       }
 
-      setImportProgress('正在验证书源格式...');
+      setImportProgress('正在验证书格式...');
       // 格式化书源数据
       const validSources = sourcesToImport
         .filter(source => 
@@ -264,19 +276,109 @@ const SourceManager = ({ navigation }) => {
   };
 
   const handleEditSource = (source) => {
-    setCurrentSource(source);
+    console.log('Editing source in SourceManager - Full source object:', JSON.stringify(source, null, 2));
+    setCurrentEditSource(source);
     setEditDialogVisible(true);
   };
 
   const handleSaveSource = async (sourceData) => {
     try {
-      if (currentSource) {
-        await sourceManager.updateSource(sourceData);
+      if (currentEditSource) {
+        // 构造更新的书源对象
+        const updatedSource = {
+          id: currentEditSource.source.id,
+          bookSourceName: sourceData.bookSourceName,
+          bookSourceUrl: sourceData.bookSourceUrl,
+          bookSourceGroup: sourceData.bookSourceGroup,
+          bookSourceType: currentEditSource.source.bookSourceType || 0,
+          enabled: sourceData.enabled !== false ? 1 : 0,
+          enabledExplore: currentEditSource.source.enabledExplore !== false ? 1 : 0,
+          customOrder: currentEditSource.source.customOrder || 0,
+          weight: currentEditSource.source.weight || 0,
+          header: sourceData.header,
+          loginUrl: sourceData.loginUrl,
+          searchUrl: sourceData.searchUrl,
+          ruleSearch: JSON.stringify({
+            url: sourceData.searchUrl,
+            list: sourceData.searchList,
+            name: sourceData.searchName,
+            author: sourceData.searchAuthor,
+            kind: sourceData.searchKind,
+            lastChapter: sourceData.searchLastChapter,
+            introduce: sourceData.searchIntroduce,
+            coverUrl: sourceData.searchCoverUrl,
+            noteUrl: sourceData.searchNoteUrl,
+          }),
+          // 构造书籍信息规则对象
+          ruleBookInfo: JSON.stringify({
+            name: sourceData.ruleBookName,
+            author: sourceData.ruleBookAuthor,
+            kind: sourceData.ruleBookKind,
+            lastChapter: sourceData.ruleBookLastChapter,
+            introduce: sourceData.ruleBookIntroduce,
+            coverUrl: sourceData.ruleBookCoverUrl,
+          }),
+          // 构造目录规则对象
+          ruleToc: JSON.stringify({
+            chapterList: sourceData.ruleChapterList,
+            chapterName: sourceData.ruleChapterName,
+            chapterUrl: sourceData.ruleChapterUrl,
+            contentUrl: sourceData.ruleContentUrl,
+          }),
+          // 构造正文规则对象
+          ruleContent: JSON.stringify({
+            content: sourceData.ruleBookContent,
+          }),
+        };
+
+        await sourceManager.updateSource(updatedSource);
       } else {
-        await sourceManager.addSource(sourceData);
+        // 添加新书源时使用相同的数据结构
+        const newSource = {
+          bookSourceName: sourceData.bookSourceName,
+          bookSourceUrl: sourceData.bookSourceUrl,
+          bookSourceGroup: sourceData.bookSourceGroup,
+          enabled: true,
+          header: sourceData.header,
+          loginUrl: sourceData.loginUrl,
+          searchUrl: sourceData.searchUrl,
+          ruleSearch: {
+            url: sourceData.searchUrl,
+            list: sourceData.searchList,
+            name: sourceData.searchName,
+            author: sourceData.searchAuthor,
+            kind: sourceData.searchKind,
+            lastChapter: sourceData.searchLastChapter,
+            introduce: sourceData.searchIntroduce,
+            coverUrl: sourceData.searchCoverUrl,
+            noteUrl: sourceData.searchNoteUrl,
+          },
+          ruleBookInfo: {
+            name: sourceData.ruleBookName,
+            author: sourceData.ruleBookAuthor,
+            kind: sourceData.ruleBookKind,
+            lastChapter: sourceData.ruleBookLastChapter,
+            introduce: sourceData.ruleBookIntroduce,
+            coverUrl: sourceData.ruleBookCoverUrl,
+          },
+          ruleToc: {
+            chapterList: sourceData.ruleChapterList,
+            chapterName: sourceData.ruleChapterName,
+            chapterUrl: sourceData.ruleChapterUrl,
+            contentUrl: sourceData.ruleContentUrl,
+          },
+          ruleContent: {
+            content: sourceData.ruleBookContent,
+          },
+          lastUpdateTime: new Date().getTime(),
+        };
+
+        await sourceManager.addSource(newSource);
       }
-      setEditDialogVisible(false);
+      
       await loadSources();
+      setEditDialogVisible(false);
+      setCurrentEditSource(null);
       showSnackbar('保存成功');
     } catch (error) {
       console.error('保存书源失败:', error);
@@ -343,14 +445,14 @@ const SourceManager = ({ navigation }) => {
       const sourcesToExport = sources.map(source => source.source);
       const sourcesData = JSON.stringify(sourcesToExport, null, 2);
       
-      // 导出到文件
+      // 导到文件
       const path = `${RNFS.ExternalDirectoryPath}/book_sources.json`;
       await RNFS.writeFile(path, sourcesData, 'utf8');
       
       showSnackbar(`书源已导出到: ${path}`);
     } catch (error) {
       console.error('导出失败:', error);
-      showSnackbar('书源导出失败');
+      showSnackbar('源导出失败');
     }
   };
 
@@ -644,8 +746,11 @@ const SourceManager = ({ navigation }) => {
 
       <EditSourceDialog
         visible={editDialogVisible}
-        onDismiss={() => setEditDialogVisible(false)}
-        source={currentSource}
+        source={currentEditSource}
+        onDismiss={() => {
+          setEditDialogVisible(false);
+          setCurrentEditSource(null);
+        }}
         onSave={handleSaveSource}
       />
 

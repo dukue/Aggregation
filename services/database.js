@@ -39,7 +39,7 @@ class Database {
         );
       `);
     } catch (error) {
-      console.error('初始化数据库失败:', error);
+      console.error('初化数据库失败:', error);
       throw error;
     }
   }
@@ -131,28 +131,56 @@ class Database {
 
   async updateSource(sourceId, updates) {
     try {
+      const validColumns = [
+        'bookSourceName',
+        'bookSourceUrl',
+        'bookSourceGroup',
+        'bookSourceType',
+        'loginUrl',
+        'header',
+        'enabled',
+        'enabledExplore',
+        'customOrder',
+        'weight',
+        'searchUrl',
+        'exploreUrl',
+        'ruleSearch',
+        'ruleExplore',
+        'ruleBookInfo',
+        'ruleToc',
+        'ruleContent',
+        'lastUpdateTime'
+      ];
+
       const sets = [];
       const values = [];
       
       Object.entries(updates).forEach(([key, value]) => {
-        if (key === 'header' || key.startsWith('rule')) {
-          sets.push(`${key} = ?`);
-          values.push(JSON.stringify(value));
-        } else {
+        if (validColumns.includes(key)) {
           sets.push(`${key} = ?`);
           values.push(value);
         }
       });
 
+      if (sets.length === 0) {
+        throw new Error('No valid columns to update');
+      }
+
+      // 添加 lastUpdateTime
       sets.push('lastUpdateTime = ?');
       values.push(Date.now());
+      
+      // 添加 WHERE 条件的 ID
       values.push(sourceId);
 
-      await this.db.executeSql(`
+      const sql = `
         UPDATE book_sources 
         SET ${sets.join(', ')}
         WHERE id = ?
-      `, values);
+      `;
+
+      console.log('Executing SQL:', sql, values);
+      await this.db.executeSql(sql, values);
     } catch (error) {
       console.error('更新书源失败:', error);
       throw error;
@@ -195,4 +223,4 @@ class Database {
   }
 }
 
-export default new Database(); 
+export const database = new Database(); 
